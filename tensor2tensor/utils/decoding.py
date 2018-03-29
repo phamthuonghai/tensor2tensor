@@ -242,6 +242,10 @@ def decode_from_file(estimator,
   inputs_vocab_key = "inputs" if has_input else "targets"
   inputs_vocab = hparams.problems[problem_id].vocabulary[inputs_vocab_key]
   targets_vocab = hparams.problems[problem_id].vocabulary["targets"]
+  other_vocabs = {}
+  for k, v in hparams.problems[problem_id].vocabulary.items():
+    if k not in ["inputs", "targets"]:
+      other_vocabs[k] = v
   problem_name = FLAGS.problems.split("-")[problem_id]
   tf.logging.info("Performing decoding from a file.")
   sorted_inputs, sorted_keys = _get_sorted_inputs(filename, decode_hp.shards,
@@ -251,7 +255,7 @@ def decode_from_file(estimator,
   def input_fn():
     input_gen = _decode_batch_input_fn(
         problem_id, num_decode_batches, sorted_inputs, inputs_vocab,
-        decode_hp.batch_size, decode_hp.max_input_size)
+        decode_hp.batch_size, decode_hp.max_input_size, other_vocabs)
     gen_fn = make_input_fn_from_generator(input_gen)
     example = gen_fn()
     return _decode_input_tensor_to_features_dict(example, hparams)
@@ -343,8 +347,7 @@ def decode_interactively(estimator, hparams, decode_hp):
   """Interactive decoding."""
 
   def input_fn():
-    gen_fn = make_input_fn_from_generator(
-        _interactive_input_fn(hparams, decode_hp))
+    gen_fn = make_input_fn_from_generator(_interactive_input_fn(hparams))
     example = gen_fn()
     example = _interactive_input_tensor_to_features_dict(example, hparams)
     return example
@@ -376,15 +379,22 @@ def decode_interactively(estimator, hparams, decode_hp):
 
 
 def _decode_batch_input_fn(problem_id, num_decode_batches, sorted_inputs,
-                           vocabulary, batch_size, max_input_size):
+                           vocabulary, batch_size, max_input_size, other_vocabs=None):
   tf.logging.info(" batch %d" % num_decode_batches)
   # First reverse all the input sentences so that if you're going to get OOMs,
   # you'll see it in the first batch
+  special_defaults = {'relative_tree_distance': '0'}
+  special_types = {'relative_tree_distance': str}
+  if other_vocabs is None:
+    other_vocabs = {}
   sorted_inputs.reverse()
+  batch_others = {}
   for b in range(num_decode_batches):
     tf.logging.info("Decoding batch %d" % b)
     batch_length = 0
     batch_inputs = []
+    for k in other_vocabs:
+      batch_others[k] = []
     for inputs in sorted_inputs[b * batch_size:(b + 1) * batch_size]:
       input_ids = vocabulary.encode(inputs)
       if max_input_size > 0:
@@ -394,16 +404,28 @@ def _decode_batch_input_fn(problem_id, num_decode_batches, sorted_inputs,
       batch_inputs.append(input_ids)
       if len(input_ids) > batch_length:
         batch_length = len(input_ids)
+      for k in other_vocabs:
+        tmp_k = other_vocabs[k].encode(inputs)[:max_input_size]
+        batch_others[k].append(tmp_k)
     final_batch_inputs = []
     for input_ids in batch_inputs:
       assert len(input_ids) <= batch_length
       x = input_ids + [0] * (batch_length - len(input_ids))
       final_batch_inputs.append(x)
+    final_batch_others = {}
+    for k in other_vocabs:
+      final_batch_others[k] = [input_ids + [special_defaults.get(k, 0)] * (batch_length - len(input_ids) - 1)
+                               for input_ids in batch_others[k]]
 
-    yield {
+    to_yield = {
         "inputs": np.array(final_batch_inputs).astype(np.int32),
         "problem_choice": np.array(problem_id).astype(np.int32),
     }
+
+    for k in other_vocabs:
+      to_yield[k] = np.array(final_batch_others[k]).astype(special_types.get(k, np.int32))
+
+    yield to_yield
 
 
 def _interactive_input_fn(hparams, decode_hp):
@@ -645,6 +667,11 @@ def _decode_input_tensor_to_features_dict(feature_map, hparams):
   features["decode_length"] = (
       IMAGE_DECODE_LENGTH if input_is_image else tf.shape(x)[1] + 50)
   features["inputs"] = x
+
+  for k, v in feature_map.items():
+    if k not in ["inputs", "problem_choice"]:
+      features[k] = tf.convert_to_tensor(feature_map[k])
+
   return features
 
 
