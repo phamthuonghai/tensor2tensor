@@ -615,6 +615,34 @@ class T2TModel(base.Layer):
       features["inputs"] = tf.reshape(features["inputs"],
                                       [s[0] * s[1], s[2], s[3], s[4]])
 
+    # Expand other features, except 'inputs' and 'targets'
+    others_old = {}
+    for k in features:
+      if 'input' not in k and 'target' not in k and k not in ['problem_choice',
+                                                              'decode_length',
+                                                              'relative_tree_distance']:
+        others_old[k] = features[k]
+        features[k] = tf.expand_dims(features[k], 1)
+        if len(features[k].shape) < 5:
+          features[k] = tf.expand_dims(features[k], 4)
+        # Expand the feature in to the beam size.
+        features[k] = tf.tile(features[k], [1, beam_size, 1, 1, 1])
+        s = common_layers.shape_list(features[k])
+        features[k] = tf.reshape(features[k],
+                                 [s[0] * s[1], s[2], s[3], s[4]])
+
+    # relative_tree_distance is *(%&(#*$&(* special
+    # [batch_size, max_time]
+    k = 'relative_tree_distance'
+    others_old[k] = features[k]
+    # [batch_size, beam_size, max_time]
+    features[k] = tf.expand_dims(features[k], 1)
+    features[k] = tf.tile(features[k], [1, beam_size, 1])
+    s = common_layers.shape_list(features[k])
+    # [batch_size * beam_size, max_time]
+    features[k] = tf.reshape(features[k],
+                             [s[0] * s[1], s[2]])
+
     target_modality = self._problem_hparams.target_modality
     vocab_size = target_modality.top_dimensionality
     # Setting decode length to input length + decode_length
@@ -633,6 +661,10 @@ class T2TModel(base.Layer):
     # Set inputs back to the unexpanded inputs to not to confuse the Estimator!
     if self.has_input:
       features["inputs"] = inputs_old
+    for k in features:
+      if 'input' not in k and 'target' not in k and k not in ['problem_choice',
+                                                              'decode_length']:
+        features[k] = others_old[k]
 
     # Return `top_beams` decodings (also remove initial id from the beam search)
     # TODO(lukaszkaiser): make it work multi-problem.
