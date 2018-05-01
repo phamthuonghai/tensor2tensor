@@ -387,8 +387,6 @@ def _decode_batch_input_fn(problem_id, num_decode_batches, sorted_inputs,
   tf.logging.info(" batch %d" % num_decode_batches)
   # First reverse all the input sentences so that if you're going to get OOMs,
   # you'll see it in the first batch
-  special_defaults = {'relative_tree_distance': '0'}
-  special_types = {'relative_tree_distance': str}
   if other_vocabs is None:
     other_vocabs = {}
   sorted_inputs.reverse()
@@ -418,7 +416,8 @@ def _decode_batch_input_fn(problem_id, num_decode_batches, sorted_inputs,
       final_batch_inputs.append(x)
     final_batch_others = {}
     for k in other_vocabs:
-      final_batch_others[k] = [input_ids + [special_defaults.get(k, 0)] * (batch_length - len(input_ids) - 1)
+      # TODO: check if tree_relative still works
+      final_batch_others[k] = [input_ids + ['0' if 'str' in k else 0] * (batch_length - len(input_ids))
                                for input_ids in batch_others[k]]
 
     to_yield = {
@@ -427,7 +426,7 @@ def _decode_batch_input_fn(problem_id, num_decode_batches, sorted_inputs,
     }
 
     for k in other_vocabs:
-      to_yield[k] = np.array(final_batch_others[k]).astype(special_types.get(k, np.int32))
+      to_yield[k] = np.array(final_batch_others[k]).astype(str if 'str' in k else np.int32)
 
     yield to_yield
 
