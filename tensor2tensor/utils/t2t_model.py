@@ -618,30 +618,24 @@ class T2TModel(base.Layer):
     # Expand other features, except 'inputs' and 'targets'
     others_old = {}
     for k in features:
-      if 'input' not in k and 'target' not in k and k not in ['problem_choice',
-                                                              'decode_length',
-                                                              'relative_tree_distance']:
+      if 'input' not in k and 'target' not in k and k not in {'problem_choice',
+                                                              'decode_length'}:
         others_old[k] = features[k]
         features[k] = tf.expand_dims(features[k], 1)
-        if len(features[k].shape) < 5:
-          features[k] = tf.expand_dims(features[k], 4)
-        # Expand the feature in to the beam size.
-        features[k] = tf.tile(features[k], [1, beam_size, 1, 1, 1])
-        s = common_layers.shape_list(features[k])
-        features[k] = tf.reshape(features[k],
-                                 [s[0] * s[1], s[2], s[3], s[4]])
-
-    # relative_tree_distance is *(%&(#*$&(* special
-    # [batch_size, max_time]
-    k = 'relative_tree_distance'
-    others_old[k] = features[k]
-    # [batch_size, beam_size, max_time]
-    features[k] = tf.expand_dims(features[k], 1)
-    features[k] = tf.tile(features[k], [1, beam_size, 1])
-    s = common_layers.shape_list(features[k])
-    # [batch_size * beam_size, max_time]
-    features[k] = tf.reshape(features[k],
-                             [s[0] * s[1], s[2]])
+        if 'str' in k:
+          features[k] = tf.tile(features[k], [1, beam_size, 1])
+          s = common_layers.shape_list(features[k])
+          # [batch_size * beam_size, max_time]
+          features[k] = tf.reshape(features[k],
+                                   [s[0] * s[1], s[2]])
+        else:
+          while len(features[k].shape) < 5:
+            features[k] = tf.expand_dims(features[k], -1)
+          # Expand the feature in to the beam size.
+          features[k] = tf.tile(features[k], [1, beam_size, 1, 1, 1])
+          s = common_layers.shape_list(features[k])
+          features[k] = tf.reshape(features[k],
+                                   [s[0] * s[1], s[2], s[3], s[4]])
 
     target_modality = self._problem_hparams.target_modality
     vocab_size = target_modality.top_dimensionality
