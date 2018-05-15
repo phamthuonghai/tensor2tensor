@@ -429,12 +429,15 @@ class T2TModel(base.Layer):
     if hparams.target_modality and hparams.target_modality != "default":
       target_modality_name = hparams.target_modality
 
+    remove_redundancies = hasattr(hparams, "remove_redundant_modalities") and hparams.remove_redundant_modalities
     input_modality = {}
     for f, modality_spec in six.iteritems(problem_hparams.input_modality):
       if f in input_modality_overrides:
         _warn_changed_modality_type(input_modality_overrides[f],
                                     modality_spec[0], f)
         modality_spec = (input_modality_overrides[f], modality_spec[1])
+      elif remove_redundancies:
+        continue
       input_modality[f] = registry.create_modality(modality_spec, hparams)
     problem_hparams.input_modality = input_modality
 
