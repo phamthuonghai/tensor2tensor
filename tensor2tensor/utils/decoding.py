@@ -101,6 +101,20 @@ def log_decode_results(inputs,
   return decoded_inputs, decoded_outputs, decoded_targets
 
 
+def log_decode_other_results(results, vocabs):
+  ret = []
+
+  for k, v in results.items():
+    if 'output_' in k:
+      output_name = '_'.join(k.split('_')[1:])
+      decoded_outputs = vocabs['target_' + output_name].decode(_save_until_eos(v, False))
+
+      tf.logging.info("Inference results %s: %s" % (output_name.upper(), decoded_outputs))
+      ret.append(decoded_outputs)
+
+  return ret
+
+
 def decode_from_dataset(estimator,
                         problem_names,
                         hparams,
@@ -293,6 +307,9 @@ def decode_from_file(estimator,
       _, decoded_outputs, _ = log_decode_results(
           result["inputs"], result["outputs"], problem_name,
           None, inputs_vocab, targets_vocab)
+      other_outputs = log_decode_other_results(result, hparams.problems[problem_id].vocabulary)
+      if len(other_outputs) > 0:
+        decoded_outputs += '\t' + '\t'.join(other_outputs)
       decodes.append(decoded_outputs)
 
   # Reversing the decoded inputs and outputs because they were reversed in
