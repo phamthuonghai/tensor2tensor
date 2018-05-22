@@ -107,7 +107,8 @@ def log_decode_other_results(results, vocabs):
   for k, v in results.items():
     if 'output_' in k:
       output_name = '_'.join(k.split('_')[1:])
-      decoded_outputs = vocabs['target_' + output_name].decode(_save_until_eos(v, False))
+      decoded_outputs = vocabs['target_' + output_name].decode(
+        v if output_name == 'dephead' else _save_until_eos(v, False))
 
       tf.logging.info("Inference results %s: %s" % (output_name.upper(), decoded_outputs))
       ret.append(decoded_outputs)
