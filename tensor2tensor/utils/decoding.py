@@ -434,9 +434,12 @@ def _decode_batch_input_fn(problem_id, num_decode_batches, sorted_inputs,
       final_batch_inputs.append(x)
     final_batch_others = {}
     for k in other_vocabs:
-      # TODO: check if tree_relative still works
-      final_batch_others[k] = [input_ids + ['0' if 'str' in k else 0] * (batch_length - len(input_ids))
-                               for input_ids in batch_others[k]]
+      if 'str' in k:
+        final_batch_others[k] = [input_ids + ['0'] * (batch_length - len(input_ids) - 1)
+                                 for input_ids in batch_others[k]]
+      else:
+        final_batch_others[k] = [input_ids + [0] * (batch_length - len(input_ids))
+                                 for input_ids in batch_others[k]]
 
     to_yield = {
         "inputs": np.array(final_batch_inputs).astype(np.int32),
